@@ -1,0 +1,11 @@
+requests
+torch
+einops
+timm
+boto3
+opencv-python-headless
+Pillow
+numpy
+python-dotenv
+kafka-python
+pytest
