@@ -7,7 +7,10 @@ from dotenv import load_dotenv
 from video_preprocessor import process_videos_in_folder
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s][%(levelname)s][%(name)s] %(message)s"
+)
 logger = logging.getLogger("main")
 
 consumer = KafkaConsumer(
