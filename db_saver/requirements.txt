@@ -1,0 +1,6 @@
+opensearch-py
+pymilvus
+kafka-python
+requests
+python-dotenv
+uuid

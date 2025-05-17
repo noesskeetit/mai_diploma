@@ -1,25 +1,21 @@
-import os
 import cv2
 import logging
 from PIL import Image
 import torch.nn.functional as F
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
-STEP_MS = int(os.getenv('PROCESSING_TIMESTEP', '1000'))
-THRESH = float(os.getenv('PROCESSING_SIMILARITY_THRESHOLD', '0.85'))
+STEP_MS = int(os.getenv('PROCESSING_TIMESTEP', '1000'))  # интервал в мс
+THRESH = float(os.getenv('PROCESSING_SIMILARITY_THRESHOLD', '0.85'))  # порог схожести
 
 logger = logging.getLogger("process_video_clip")
 
 def process_video_clip(video_path: str, encoder_fn):
     """
-    Читает видео (OpenCV), берёт каждый кадр с шагом STEP_MS (мс),
-    кодирует через encoder_fn (возвращает torch.Tensor), и удаляет
-    «похожие» кадры по косинусному сходству.
-    Возвращает:
-      frame_ids: List[str],
-      frames: List[np.ndarray],  # RGB
-      timestamps: List[int]      # миллисекунды от начала
+    Читает видео, берёт кадр каждые STEP_MS миллисекунд,
+    кодирует через encoder_fn и удаляет похожие кадры.
+    Возвращает списки frame_ids, raw RGB кадров и их timestamp.
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -44,17 +40,16 @@ def process_video_clip(video_path: str, encoder_fn):
         pil = Image.fromarray(rgb)
 
         try:
-            emb = encoder_fn(pil)
-            emb = emb.cpu()
+            # получаем эмбеддинг кадра
+            emb = encoder_fn(pil).cpu()
             emb = emb / emb.norm(dim=-1, keepdim=True)
         except Exception as e:
             logger.exception(f"Encoder error: {e}")
             continue
 
-        is_unique = (prev_emb is None or
-                     F.cosine_similarity(emb, prev_emb, dim=0).item() < THRESH)
-        if is_unique:
-            frame_ids.append(f"{t_ms}")
+        # проверяем косинусное сходство с предыдущим
+        if prev_emb is None or F.cosine_similarity(emb, prev_emb, dim=0).item() < THRESH:
+            frame_ids.append(str(t_ms))
             frames.append(rgb)
             timestamps.append(t_ms)
             prev_emb = emb

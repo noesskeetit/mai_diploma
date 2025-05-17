@@ -3,7 +3,6 @@ import json
 import logging
 from kafka import KafkaConsumer
 from dotenv import load_dotenv
-
 from video_preprocessor import process_videos_in_folder
 
 load_dotenv()
@@ -13,6 +12,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+# Подписываемся на топик с задачами на обработку видеопапок
 consumer = KafkaConsumer(
     os.getenv('VIDEOPROCESSOR_INPUT_TOPIC'),
     group_id=os.getenv('KAFKA_GROUP_ID'),

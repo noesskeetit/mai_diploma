@@ -4,6 +4,8 @@ import tempfile
 import logging
 import boto3
 import re
+import json
+from kafka import KafkaProducer
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -13,18 +15,7 @@ from process_video_clip import process_video_clip
 load_dotenv()
 logger = logging.getLogger("video_preprocessor")
 
-def parse_video_filename(filename):
-    """
-    Парсит имя файла room.video_id.user_id.start_demo_time.ogg
-    Возвращает: room, video_id, user_id, start_demo_time
-    """
-    base = os.path.basename(filename)
-    m = re.match(r"^([^.]+)\.([^.]+)\.([^.]+)\.([^.]+)\.ogg$", base)
-    if not m:
-        raise ValueError(f"Filename does not match pattern: {filename}")
-    return m.group(1), m.group(2), m.group(3), m.group(4)
-
-# S3-клиент
+# S3-клиент для чтения/записи
 s3 = boto3.client(
     's3',
     endpoint_url=os.getenv('S3_URL'),
@@ -32,9 +23,30 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
 )
 
+# Kafka Producer для отправки задач на аннотацию
+producer = KafkaProducer(
+    bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "").split(","),
+    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+)
+IMAGE_TASK_TOPIC = os.getenv("IMAGE_TASK_TOPIC", "image-tasks")
+
 clip = ClipClient()
 
+def parse_video_filename(filename):
+    """
+    Извлекает room, video_id, user_id, start_demo_time из имени:
+      room.video_id.user_id.start_demo_time.ogg
+    """
+    base = os.path.basename(filename)
+    m = re.match(r"^([^.]+)\.([^.]+)\.([^.]+)\.([^.]+)\.ogg$", base)
+    if not m:
+        raise ValueError(f"Filename does not match pattern: {filename}")
+    return m.group(1), m.group(2), m.group(3), m.group(4)
+
 def upload_image(bucket: str, key: str, img_array):
+    """
+    Сохраняет RGB-массив как JPEG в S3 по ключу key.
+    """
     buf = io.BytesIO()
     Image.fromarray(img_array).save(buf, format='JPEG')
     buf.seek(0)
@@ -42,11 +54,11 @@ def upload_image(bucket: str, key: str, img_array):
 
 def process_videos_in_folder(bucket: str, root_folder: str):
     """
-    Для каждого raw_video/*.ogg в {root_folder}/raw_video/:
-      1. скачиваем s3.download_file (стриминг)
-      2. делаем дедупликацию кадров
-      3. заливаем JPEG-кадры в {root_folder}/preprocessed_video/{room.video_id.user_id.start_demo_time}/
-         имена кадров: room.video_id.user_id.start_demo_time.XX_frame_start_time-frame_end_time.jpg
+    Для каждого .ogg в {root_folder}/raw_video/:
+      1) скачиваем в temp
+      2) извлекаем уникальные кадры
+      3) заливаем JPEG в {root_folder}/preprocessed_video/ и
+         публикуем задачу в Kafka для аннотации
     """
     raw_pref = f"{root_folder}/raw_video/"
     resp = s3.list_objects_v2(Bucket=bucket, Prefix=raw_pref)
@@ -59,44 +71,59 @@ def process_videos_in_folder(bucket: str, root_folder: str):
         if not key.lower().endswith('.ogg'):
             continue
 
-        logger.debug(f"Found raw video: s3://{bucket}/{key}")
-
+        # временный файл для видео
         ext = os.path.splitext(key)[1]
         tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
         tmp_path = tmp.name
         tmp.close()
 
         try:
-            # 1) Download via streaming API
+            # скачиваем
             logger.debug(f"Downloading s3://{bucket}/{key} → {tmp_path}")
             s3.download_file(bucket, key, tmp_path)
 
-            # 2) Deduplication
-            frame_ids, frames, timestamps = process_video_clip(tmp_path, clip.encode_image)
+            # выделяем кадры
+            _, frames, timestamps = process_video_clip(tmp_path, clip.encode_image)
             if not timestamps:
-                logger.warning(f"No unique frames found for {key}")
+                logger.warning(f"No unique frames for {key}")
                 continue
 
-            # 3) Формируем структуру хранения и имена файлов
+            # парсим имя видео
             room, video_id, user_id, start_demo_time = parse_video_filename(key)
             folder_name = f"{room}.{video_id}.{user_id}.{start_demo_time}"
             dest_pref = f"{root_folder}/preprocessed_video/{folder_name}/"
 
-            n = len(timestamps)
-            end_times = [timestamps[i+1] - 1 if i + 1 < n else timestamps[i] for i in range(n)]
-
-            for idx, (start_ts, end_ts, img) in enumerate(zip(timestamps, end_times, frames)):
+            # сохраняем кадры и публикуем задачи
+            for idx, (start_ts, img) in enumerate(zip(timestamps, frames)):
                 filename = (
                     f"{room}.{video_id}.{user_id}.{start_demo_time}."
-                    f"{idx:02d}_frame_{start_ts}-{end_ts}.jpg"
+                    f"{idx:02d}.jpg"
                 )
-                upload_image(bucket, dest_pref + filename, img)
+                s3_key = dest_pref + filename
 
-            logger.info(f"Successfully processed {key}: {len(frames)} images uploaded")
+                # 1) загрузка в S3
+                upload_image(bucket, s3_key, img)
+                logger.info(f"Uploaded {s3_key}")
+
+                # 2) отправка задачи в Kafka
+                message = {
+                    "bucket": bucket,
+                    "key": s3_key,
+                    "room": room,
+                    "video_id": video_id,
+                    "user_id": user_id,
+                    "start_demo_time": start_demo_time,
+                    "frame_id": idx,
+                    "timestamp_ms": start_ts,
+                }
+                producer.send(IMAGE_TASK_TOPIC, message)
+                logger.info(f"Sent task to {IMAGE_TASK_TOPIC}: {message}")
+
+            producer.flush()
+            logger.info(f"Flushed Kafka for {key}")
 
         except Exception:
-            logger.exception(f"Error processing s3://{bucket}/{key}")
-
+            logger.exception(f"Error processing {key}")
         finally:
             try:
                 os.remove(tmp_path)
