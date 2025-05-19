@@ -10,14 +10,34 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("reranker")
 
 # ==== Конфигурация ====
-MODEL_NAME = os.getenv(
-    "RERANK_MODEL",
-    "amberoad/bert-multilingual-passage-reranking-msmarco"
-)
+long_context_flag = bool(os.getenv("RERANK_LONG_CONTEXT_FLAG", True))
+
+if long_context_flag:
+    MODEL_NAME = os.getenv(
+        "RERANK_MODEL_LONG",
+        "BAAI/bge-reranker-large"
+    )
+else:
+    MODEL_NAME = os.getenv(
+        "RERANK_MODEL_SHORT",
+        "amberoad/bert-multilingual-passage-reranking-msmarco"
+    )
+
 DEVICE = os.getenv("RERANKER_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 
 # ==== Загрузка модели ====
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+## Для короткого контекста
+if long_context_flag:
+    ## Для длинного контекста
+    tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_NAME,
+        truncation_side="left",
+        model_max_length=8192
+    )
+else:
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
 model.to(DEVICE).eval()
 
