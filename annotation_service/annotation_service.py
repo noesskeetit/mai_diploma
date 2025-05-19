@@ -70,7 +70,6 @@ def annotate_image(bucket: str, key: str) -> str:
                                     - Любые детали интерфейса (кнопки, меню, подсказки, индикаторы загрузки) 
                                     - Общее настроение и назначение кадра (демонстрация кода, обучение, обсуждение архитектуры, отчёт) 
                                     - При возможности укажи, какие действия пользователь мог выполнять (набор кода, переключение слайдов, запуск команды)
-                                    - Если ты не можешь обработать это изображение, по любым из причинам, напиши - WRONG_IMAGE 
                                 """
                     },
                     {"type": "image_url", "image_url": {"url": data_url}}
@@ -93,6 +92,7 @@ for msg in consumer:
         logger.info(f"Got caption: {caption!r}")
 
         out_msg = {
+            "bucket":          job["bucket"],       # ← передаём bucket
             "room_uuid":       job["room"],
             "image_key":       job["key"],
             "caption":         caption,

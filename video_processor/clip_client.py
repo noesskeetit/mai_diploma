@@ -18,9 +18,6 @@ class ClipClient:
         self.base_url = base.rstrip('/')
 
     def encode_image(self, pil_image: Image.Image) -> torch.Tensor:
-        """
-        Отправляет PIL-изображение на /encode_image и возвращает Torch-тензор эмбеддинга.
-        """
         buf = io.BytesIO()
         pil_image.save(buf, format='JPEG')
         buf.seek(0)

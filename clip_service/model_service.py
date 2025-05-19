@@ -48,11 +48,9 @@ async def encode_image(file: UploadFile = File(...)):
         from PIL import Image
         import io
 
-        # Читаем байты и конвертим в RGB
         content = await file.read()
         img = Image.open(io.BytesIO(content)).convert("RGB")
 
-        # Пропускаем через процессор и модель
         inputs = processor(images=img, return_tensors="pt").to(model.device)
         with torch.no_grad():
             outputs = model.get_image_features(**inputs)
@@ -71,7 +69,6 @@ async def encode_text(request: TextRequest):
     Принимает JSON {"text": "..."} и возвращает L2-нормализованный эмбеддинг текста.
     """
     try:
-        # Токенизируем и получаем фичи
         inputs = processor(text=request.text, return_tensors="pt", padding=True).to(model.device)
         with torch.no_grad():
             outputs = model.get_text_features(**inputs)

@@ -16,6 +16,7 @@ logger = logging.getLogger("main")
 consumer = KafkaConsumer(
     os.getenv('VIDEOPROCESSOR_INPUT_TOPIC'),
     group_id=os.getenv('KAFKA_GROUP_ID'),
+    max_poll_interval_ms=1_200_000,
     bootstrap_servers=[os.getenv('KAFKA_BOOTSTRAP_SERVERS')],
     value_deserializer=lambda x: json.loads(x.decode())
 )

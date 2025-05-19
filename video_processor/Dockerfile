@@ -1,7 +1,6 @@
 FROM python:3.9-slim
 WORKDIR /app
 
-# Системные зависимости для ffmpeg и OpenCV
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ffmpeg libsm6 libxext6 build-essential \
@@ -13,5 +12,4 @@ RUN pip install --upgrade pip \
 
 COPY . .
 
-# Запускаем основной скрипт
 CMD ["python", "main.py"]

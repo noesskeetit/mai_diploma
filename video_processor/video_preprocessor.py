@@ -38,28 +38,18 @@ def parse_video_filename(filename):
       room.video_id.user_id.start_demo_time.ogg
     """
     base = os.path.basename(filename)
-    m = re.match(r"^([^.]+)\.([^.]+)\.([^.]+)\.([^.]+)\.ogg$", base)
+    m = re.match(r"^([^.]+)\.([^.]+)\.([^.]+)\.([^.]+)\.webm$", base)
     if not m:
         raise ValueError(f"Filename does not match pattern: {filename}")
     return m.group(1), m.group(2), m.group(3), m.group(4)
 
 def upload_image(bucket: str, key: str, img_array):
-    """
-    Сохраняет RGB-массив как JPEG в S3 по ключу key.
-    """
     buf = io.BytesIO()
     Image.fromarray(img_array).save(buf, format='JPEG')
     buf.seek(0)
-    s3.put_object(Bucket=bucket, Key=key, Body=buf, ContentType='image/jpeg')
+    s3.put_object(Bucket=bucket, Key=key, Body=buf, ContentType='image/jpg')
 
 def process_videos_in_folder(bucket: str, root_folder: str):
-    """
-    Для каждого .ogg в {root_folder}/raw_video/:
-      1) скачиваем в temp
-      2) извлекаем уникальные кадры
-      3) заливаем JPEG в {root_folder}/preprocessed_video/ и
-         публикуем задачу в Kafka для аннотации
-    """
     raw_pref = f"{root_folder}/raw_video/"
     resp = s3.list_objects_v2(Bucket=bucket, Prefix=raw_pref)
     if not resp.get('Contents'):
@@ -68,53 +58,46 @@ def process_videos_in_folder(bucket: str, root_folder: str):
 
     for obj in resp['Contents']:
         key = obj['Key']
-        if not key.lower().endswith('.ogg'):
+        if not key.lower().endswith('.webm'):
             continue
 
-        # временный файл для видео
         ext = os.path.splitext(key)[1]
         tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
         tmp_path = tmp.name
         tmp.close()
 
         try:
-            # скачиваем
             logger.debug(f"Downloading s3://{bucket}/{key} → {tmp_path}")
             s3.download_file(bucket, key, tmp_path)
 
-            # выделяем кадры
             _, frames, timestamps = process_video_clip(tmp_path, clip.encode_image)
             if not timestamps:
                 logger.warning(f"No unique frames for {key}")
                 continue
 
-            # парсим имя видео
             room, video_id, user_id, start_demo_time = parse_video_filename(key)
             folder_name = f"{room}.{video_id}.{user_id}.{start_demo_time}"
             dest_pref = f"{root_folder}/preprocessed_video/{folder_name}/"
 
-            # сохраняем кадры и публикуем задачи
             for idx, (start_ts, img) in enumerate(zip(timestamps, frames)):
                 filename = (
                     f"{room}.{video_id}.{user_id}.{start_demo_time}."
-                    f"{idx:02d}.jpg"
+                    f"{start_ts}_{idx:02d}.jpg"
                 )
                 s3_key = dest_pref + filename
 
-                # 1) загрузка в S3
                 upload_image(bucket, s3_key, img)
                 logger.info(f"Uploaded {s3_key}")
 
-                # 2) отправка задачи в Kafka
                 message = {
-                    "bucket": bucket,
-                    "key": s3_key,
-                    "room": room,
-                    "video_id": video_id,
-                    "user_id": user_id,
+                    "bucket":          bucket,
+                    "key":             s3_key,
+                    "room":            room,
+                    "video_id":        video_id,
+                    "user_id":         user_id,
                     "start_demo_time": start_demo_time,
-                    "frame_id": idx,
-                    "timestamp_ms": start_ts,
+                    "frame_id":        idx,
+                    "timestamp_ms":    start_ts,
                 }
                 producer.send(IMAGE_TASK_TOPIC, message)
                 logger.info(f"Sent task to {IMAGE_TASK_TOPIC}: {message}")

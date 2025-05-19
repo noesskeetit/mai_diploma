@@ -6,10 +6,10 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD-SHELL","curl -f http://localhost:8000/health || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 20
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 300s
+      timeout: 20s
+      retries: 5
       start_period: 200s
 
   video-processor:
@@ -38,3 +38,47 @@ services:
       annotation-service:
         condition: service_started
     command: python db_saver.py
+
+  reranker:
+    build: ./reranker
+    container_name: reranker-service
+    env_file: .env
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8002/health || exit 1" ]
+      interval: 300s
+      timeout: 20s
+      retries: 5
+    command: uvicorn reranker_service:app --host 0.0.0.0 --port 8002
+
+  retriever:
+    build: ./retriever
+    container_name: retriever-service
+    env_file: .env
+    depends_on:
+      db-saver:
+        condition: service_started
+      reranker:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8001/health || exit 1" ]
+      interval: 300s
+      timeout: 20s
+      retries: 5
+    command: uvicorn retriever_service:app --host 0.0.0.0 --port 8001
+
+  rag_ui:
+    build: ./rag_ui
+    container_name: rag-ui-service
+    env_file: .env
+    depends_on:
+      retriever:
+        condition: service_healthy
+      reranker:
+        condition: service_healthy
+    ports:
+      - "7860:7860"
+    command: python rag_ui_service.py
