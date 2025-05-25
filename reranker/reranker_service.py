@@ -24,6 +24,7 @@ else:
     )
 
 DEVICE = os.getenv("RERANKER_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+logger.info(f'RERANKER_DEVICE IS {DEVICE}')
 
 # ==== Загрузка модели ====
 

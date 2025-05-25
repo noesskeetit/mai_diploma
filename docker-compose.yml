@@ -11,6 +11,11 @@ services:
       timeout: 20s
       retries: 5
       start_period: 200s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ]
 
   video-processor:
     build: ./video_processor
@@ -20,6 +25,11 @@ services:
       model-service:
         condition: service_healthy
     command: python main.py
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ]
 
   annotation-service:
     build: ./annotation_service
@@ -51,6 +61,11 @@ services:
       timeout: 20s
       retries: 5
     command: uvicorn reranker_service:app --host 0.0.0.0 --port 8002
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ]
 
   retriever:
     build: ./retriever

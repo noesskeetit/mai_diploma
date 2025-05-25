@@ -4,3 +4,4 @@ kafka-python
 requests
 python-dotenv
 uuid
+urllib3

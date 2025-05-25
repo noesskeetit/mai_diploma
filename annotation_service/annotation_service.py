@@ -13,14 +13,17 @@ logger = logging.getLogger("annotation_service")
 
 # Параметры Kafka
 BOOT = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "").split(",")
-IN_TOPIC  = os.getenv("IMAGE_TASK_TOPIC", "image-tasks")
+IN_TOPIC  = os.getenv("IMAGE_TASK_INPUT_TOPIC", "image-tasks")
 OUT_TOPIC = os.getenv("DB_SAVER_INPUT_TOPIC", "db-saver-input")
 
 consumer = KafkaConsumer(
     IN_TOPIC,
     bootstrap_servers=BOOT,
-    group_id="annotation-service",
+    group_id=os.getenv("KAFKA_GROUP_ID_ANNOTATION", "annotation_service"),
+    max_poll_interval_ms=3_600_000,
     value_deserializer=lambda b: json.loads(b.decode("utf-8")),
+    enable_auto_commit=False,
+
 )
 producer = KafkaProducer(
     bootstrap_servers=BOOT,
@@ -65,11 +68,8 @@ def annotate_image(bucket: str, key: str) -> str:
                                     - Основные объекты и их назначение (слайды, окна приложений, диаграммы, таблицы, текстовые блоки и т. д.) 
                                     - Контекст и среду (рабочий стол, IDE, терминал, веб-страница, слайд презентации или учебный материал) 
                                     - Весь текст на экране (заголовки, подписи, фрагменты кода, формулы, маркеры списка) 
-                                    - Цветовую схему, шрифты и стиль подсветки синтаксиса, если это код или разметка 
                                     - Структуру представленных элементов (схема БД, архитектура системы, график или диаграмма) 
-                                    - Любые детали интерфейса (кнопки, меню, подсказки, индикаторы загрузки) 
                                     - Общее настроение и назначение кадра (демонстрация кода, обучение, обсуждение архитектуры, отчёт) 
-                                    - При возможности укажи, какие действия пользователь мог выполнять (набор кода, переключение слайдов, запуск команды)
                                 """
                     },
                     {"type": "image_url", "image_url": {"url": data_url}}
@@ -100,6 +100,8 @@ for msg in consumer:
         }
         producer.send(OUT_TOPIC, out_msg)
         producer.flush()
+        consumer.commit()
+        logger.info('!annotation_task_message commited in consumer!')
         logger.info(f"Sent to {OUT_TOPIC}: {out_msg}")
 
     except Exception:

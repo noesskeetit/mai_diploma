@@ -28,17 +28,17 @@ producer = KafkaProducer(
     bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "").split(","),
     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
 )
-IMAGE_TASK_TOPIC = os.getenv("IMAGE_TASK_TOPIC", "image-tasks")
+IMAGE_TASK_TOPIC = os.getenv("IMAGE_TASK_INPUT_TOPIC", "image-tasks")
 
 clip = ClipClient()
 
 def parse_video_filename(filename):
     """
     Извлекает room, video_id, user_id, start_demo_time из имени:
-      room.video_id.user_id.start_demo_time.ogg
+      room.video_id.user_id.start_demo_time.videoformat
     """
     base = os.path.basename(filename)
-    m = re.match(r"^([^.]+)\.([^.]+)\.([^.]+)\.([^.]+)\.webm$", base)
+    m = re.match(r"^([^.]+)\.([^.]+)\.([^.]+)\.([^.]+)\.mp4$", base)
     if not m:
         raise ValueError(f"Filename does not match pattern: {filename}")
     return m.group(1), m.group(2), m.group(3), m.group(4)
@@ -58,7 +58,7 @@ def process_videos_in_folder(bucket: str, root_folder: str):
 
     for obj in resp['Contents']:
         key = obj['Key']
-        if not key.lower().endswith('.webm'):
+        if not key.lower().endswith('.mp4'):
             continue
 
         ext = os.path.splitext(key)[1]

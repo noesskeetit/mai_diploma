@@ -1,11 +1,17 @@
 import logging
 import torch
+import os
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel
 from transformers import AutoModel, AutoProcessor
+import transformers
 
+transformers.logging.set_verbosity_error()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("model_service")
+device = os.getenv('CLIP_DEVICE', "cuda" if torch.cuda.is_available() else "cpu")
+
+logger.info(f'CLIP_DEVICE IS {device}')
 
 app = FastAPI(title="CLIP Encoding Service")
 
@@ -16,7 +22,7 @@ try:
     )
     model = AutoModel.from_pretrained(
         "jinaai/jina-clip-v2", trust_remote_code=True
-    ).to("cuda" if torch.cuda.is_available() else "cpu")
+    ).to(device)
     model.eval()
     logger.info("CLIP model and processor loaded")
 except Exception:
