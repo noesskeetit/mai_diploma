@@ -7,7 +7,7 @@ import os
 
 load_dotenv()
 STEP_MS = int(os.getenv('PROCESSING_TIMESTEP', '1000'))  # интервал в мс
-THRESH = float(os.getenv('PROCESSING_SIMILARITY_THRESHOLD', '0.85'))  # порог схожести
+THRESH = float(os.getenv('PROCESSING_SIMILARITY_THRESHOLD', '0.65'))  # порог схожести
 
 logger = logging.getLogger("process_video_clip")
 
