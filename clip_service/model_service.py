@@ -6,6 +6,9 @@ from pydantic import BaseModel
 from transformers import AutoModel, AutoProcessor
 import transformers
 
+from transformers.modeling_utils import PreTrainedModel
+PreTrainedModel.initialize_weights = lambda self, *args, **kwargs: None
+
 transformers.logging.set_verbosity_error()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("model_service")
@@ -61,6 +64,7 @@ async def encode_image(file: UploadFile = File(...)):
         with torch.no_grad():
             outputs = model.get_image_features(**inputs)
             embeddings = outputs / outputs.norm(dim=-1, keepdim=True)
+            embeddings = embeddings.to(torch.float32)
 
         emb_list = embeddings[0].cpu().numpy().tolist()
         return {"embedding": emb_list}
@@ -79,6 +83,7 @@ async def encode_text(request: TextRequest):
         with torch.no_grad():
             outputs = model.get_text_features(**inputs)
             embeddings = outputs / outputs.norm(dim=-1, keepdim=True)
+            embeddings = embeddings.to(torch.float32)
 
         emb_list = embeddings[0].cpu().numpy().tolist()
         return {"embedding": emb_list}
