@@ -64,9 +64,7 @@ app = FastAPI(title="Passage Reranker")
 
 @app.get("/health")
 async def health():
-    """
-    Простой healthcheck для Kubernetes/других оркестраторов.
-    """
+    """healthcheck"""
     return {"status": "ok"}
 
 # ==== Реранг ====

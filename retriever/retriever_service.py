@@ -7,7 +7,6 @@ from pymilvus import connections, Collection
 from opensearchpy import OpenSearch
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 # Configure logging

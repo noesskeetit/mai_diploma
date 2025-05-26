@@ -42,9 +42,7 @@ class TextRequest(BaseModel):
 
 @app.get("/health")
 async def health():
-    """
-    Простой healthcheck для Kubernetes/других оркестраторов.
-    """
+    """health-check"""
     return {"status": "ok"}
 
 @app.post("/encode_image", response_model=EmbeddingResponse)
